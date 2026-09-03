@@ -128,12 +128,29 @@ if prompt := st.chat_input("Posez une question sur vos documents..."):
     with st.chat_message("user"):
         st.markdown(prompt)
         
-    # Simulation de la réponse de l'assistant (sera remplacée aux étapes 3 et 4)
+    # Génération de la réponse de l'assistant
     with st.chat_message("assistant"):
-        if llm_enabled:
-            response = f"*(Squelette)* Réponse générée par le LLM pour la requête : **{prompt}**"
+        if st.session_state.vectorstore is None:
+            response = "⚠️ **Attention :** Veuillez d'abord charger et indexer des documents dans la barre latérale."
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
         else:
-            response = f"*(Squelette)* Résultats de la recherche sémantique pour : **{prompt}**"
-            
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+            if llm_enabled:
+                # Étape 4 (à venir) : Génération LLM
+                response = f"*(Squelette)* Réponse générée par le LLM pour la requête : **{prompt}**"
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+            else:
+                # Étape 3 : Recherche Sémantique Pure (sans LLM)
+                retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
+                relevant_docs = retriever.invoke(prompt)
+                
+                response = f"🔍 **Résultats bruts de la recherche pour :** *{prompt}*\n\n"
+                for i, doc in enumerate(relevant_docs):
+                    source_file = doc.metadata.get('source', 'Fichier inconnu')
+                    chunk_content = doc.page_content
+                    
+                    response += f"📄 **Extrait {i+1} - Fichier : `{source_file}`**\n> {chunk_content}\n\n---\n"
+                
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
