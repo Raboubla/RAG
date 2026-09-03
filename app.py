@@ -120,6 +120,11 @@ st.markdown("Discutez avec vos documents (PDF, TXT, Markdown) en toute confident
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        # Si la réponse contient des sources (Étape 4), on affiche l'expander dans l'historique
+        if "sources" in message:
+            with st.expander("🔍 Voir les extraits ayant servi de contexte"):
+                for i, src in enumerate(message["sources"]):
+                    st.markdown(f"**Extrait {i+1} - Fichier : `{src['source']}`**\n> {src['content']}\n")
 
 # Saisie utilisateur
 if prompt := st.chat_input("Posez une question sur vos documents..."):
@@ -136,10 +141,52 @@ if prompt := st.chat_input("Posez une question sur vos documents..."):
             st.session_state.messages.append({"role": "assistant", "content": response})
         else:
             if llm_enabled:
-                # Étape 4 (à venir) : Génération LLM
-                response = f"*(Squelette)* Réponse générée par le LLM pour la requête : **{prompt}**"
-                st.markdown(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                # Étape 4 : Génération LLM (RAG Complet)
+                from langchain_core.prompts import PromptTemplate
+                from langchain_community.llms import Ollama
+                
+                # 1. Récupération des fragments pertinents
+                retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
+                relevant_docs = retriever.invoke(prompt)
+                context = "\n\n".join([doc.page_content for doc in relevant_docs])
+                
+                # 2. Ingénierie de Prompt
+                template = """Tu es un assistant utile, précis et fiable. 
+Tu dois répondre à la question de l'utilisateur en te basant EXCLUSIVEMENT sur le contexte fourni ci-dessous. 
+Si le contexte ne contient pas la réponse ou ne permet pas de répondre, dis simplement "Je suis désolé, mais l'information ne se trouve pas dans les documents fournis." N'invente JAMAIS d'informations.
+
+Contexte :
+{context}
+
+Question :
+{question}
+
+Réponse :"""
+                prompt_template = PromptTemplate(template=template, input_variables=["context", "question"])
+                final_prompt = prompt_template.format(context=context, question=prompt)
+                
+                # 3. Envoi au modèle local
+                # Note : par défaut on utilise 'mistral', assure-toi que 'ollama run mistral' tourne en arrière-plan.
+                llm = Ollama(model="mistral")
+                
+                with st.spinner("🧠 Réflexion en cours par le modèle local..."):
+                    llm_response = llm.invoke(final_prompt)
+                    
+                st.markdown(llm_response)
+                
+                # 4. Transparence : Affichage visuel des extraits
+                sources_data = [{"source": d.metadata.get("source", "Inconnu"), "content": d.page_content} for d in relevant_docs]
+                
+                with st.expander("🔍 Voir les extraits ayant servi de contexte"):
+                    for i, src in enumerate(sources_data):
+                        st.markdown(f"**Extrait {i+1} - Fichier : `{src['source']}`**\n> {src['content']}\n")
+                        
+                # Sauvegarde dans l'historique (avec les sources pour que l'expander persiste)
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": llm_response,
+                    "sources": sources_data
+                })
             else:
                 # Étape 3 : Recherche Sémantique Pure (sans LLM)
                 retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
