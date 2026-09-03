@@ -2,6 +2,9 @@ import streamlit as st
 import tempfile
 import os
 from langchain_community.document_loaders import PyMuPDFLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 
 # Configuration de la page
 st.set_page_config(page_title="RAG Local - Clone NotebookLM", page_icon="📚", layout="wide")
@@ -40,9 +43,35 @@ def extract_documents(uploaded_files):
             
     return docs
 
-# Initialisation de l'historique de chat
+def process_and_vectorize(documents):
+    """Découpe les documents et les stocke dans une base vectorielle Chroma."""
+    # Étape 2.2 : Chunking (Découpage)
+    # Justification : chunk_size=1000 permet de garder le contexte d'environ 1-2 paragraphes,
+    # et chunk_overlap=200 prévient la coupure brutale d'une phrase entre deux chunks.
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    chunks = text_splitter.split_documents(documents)
+    
+    # Étape 2.3 : Vectorisation
+    # Utilisation de HuggingFaceEmbeddings (via sentence-transformers)
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    
+    # Stockage dans ChromaDB (base locale)
+    vectorstore = Chroma.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        persist_directory="./chroma_db"
+    )
+    
+    return vectorstore, chunks
+
+# Initialisation de l'historique de chat et du vectorstore
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "vectorstore" not in st.session_state:
+    st.session_state.vectorstore = None
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
@@ -58,11 +87,18 @@ with st.sidebar:
     # 2. Bouton d'indexation
     if st.button("Indexer les documents", use_container_width=True):
         if uploaded_files:
-            with st.spinner("Extraction des documents en cours..."):
+            with st.spinner("Traitement des documents en cours..."):
                 # Étape 2.1 : Extraction
                 documents = extract_documents(uploaded_files)
-                st.success(f"✅ Extraction terminée : {len(documents)} page(s) / document(s) extrait(s).")
-                st.info("🔜 Prochaine étape : Chunking (Découpage des textes).")
+                
+                # Étape 2.2 et 2.3 : Chunking et Vectorisation
+                vectorstore, chunks = process_and_vectorize(documents)
+                
+                # Sauvegarde du vectorstore dans la session Streamlit
+                st.session_state.vectorstore = vectorstore
+                
+                st.success(f"✅ Indexation terminée : {len(chunks)} fragments (chunks) générés à partir de {len(documents)} page(s)/document(s).")
+                st.info("🔜 Prochaine étape : Mode Recherche Sémantique (Étape 3).")
         else:
             st.warning("Veuillez charger au moins un document avant d'indexer.")
             
