@@ -6,8 +6,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-# Configuration de la page
-st.set_page_config(page_title="RAG Local - Clone NotebookLM", page_icon="📚", layout="wide")
+# Tout les configuration dans la page
+st.set_page_config(page_title="RAG Local - Clone NotebookLM", layout="wide")
 
 def extract_documents(uploaded_files):
     """Extrait le texte des fichiers uploadés par l'utilisateur."""
@@ -16,7 +16,7 @@ def extract_documents(uploaded_files):
         file_extension = os.path.splitext(uploaded_file.name)[1]
         
         # Les Loaders de LangChain nécessitent un chemin de fichier, 
-        # on utilise donc un fichier temporaire.
+        # donc utilisation de fichier temporels
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
             temp_file.write(uploaded_file.read())
             temp_file_path = temp_file.name
@@ -25,40 +25,37 @@ def extract_documents(uploaded_files):
             if file_extension.lower() == ".pdf":
                 loader = PyMuPDFLoader(temp_file_path)
             elif file_extension.lower() in [".txt", ".md"]:
-                # TextLoader gère aussi bien le TXT que le Markdown simple
+                # TextLoader mais pas le Markdown simple car ca gere mieux le TXT
                 loader = TextLoader(temp_file_path, encoding="utf-8")
             else:
                 continue
                 
             loaded_docs = loader.load()
             
-            # On remplace le chemin temporaire par le vrai nom du fichier pour les métadonnées
+            # remplacement par le vrai nom du fichier pour les métadonnees
             for doc in loaded_docs:
                 doc.metadata['source'] = uploaded_file.name
                 
             docs.extend(loaded_docs)
         finally:
-            # Nettoyage du fichier temporaire
             os.remove(temp_file_path)
             
     return docs
 
 def process_and_vectorize(documents):
     """Découpe les documents et les stocke dans une base vectorielle Chroma."""
-    # Étape 2.2 : Chunking (Découpage)
-    # Justification : chunk_size=1000 permet de garder le contexte d'environ 1-2 paragraphes,
-    # et chunk_overlap=200 prévient la coupure brutale d'une phrase entre deux chunks.
+    # Découpage
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200
     )
     chunks = text_splitter.split_documents(documents)
     
-    # Étape 2.3 : Vectorisation
-    # Utilisation de HuggingFaceEmbeddings (via sentence-transformers)
+    # Vectorisation
+        # HuggingFaceEmbeddings 
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     
-    # Stockage dans ChromaDB (base locale)
+    # Stocage dans ChromaDB (base local)
     vectorstore = Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
@@ -73,38 +70,38 @@ if "messages" not in st.session_state:
 if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
 
-# --- BARRE LATÉRALE ---
+# BARRE LATÉRALE
 with st.sidebar:
-    st.title("⚙️ Paramètres & Documents")
+    st.title("Paramètres & Documents")
     
-    # 1. Zone de téléchargement de fichiers
+    # Zone de téléchargement de fichiers
     uploaded_files = st.file_uploader(
         "Chargez vos documents", 
         type=["pdf", "txt", "md"], 
         accept_multiple_files=True
     )
     
-    # 2. Bouton d'indexation
+    # Bouton d'indexation
     if st.button("Indexer les documents", use_container_width=True):
         if uploaded_files:
             with st.spinner("Traitement des documents en cours..."):
-                # Étape 2.1 : Extraction
+                # Extraction
                 documents = extract_documents(uploaded_files)
                 
-                # Étape 2.2 et 2.3 : Chunking et Vectorisation
+                # Chunking et Vectorisation
                 vectorstore, chunks = process_and_vectorize(documents)
                 
                 # Sauvegarde du vectorstore dans la session Streamlit
                 st.session_state.vectorstore = vectorstore
                 
-                st.success(f"✅ Indexation terminée : {len(chunks)} fragments (chunks) générés à partir de {len(documents)} page(s)/document(s).")
-                st.info("🔜 Prochaine étape : Mode Recherche Sémantique (Étape 3).")
+                st.success(f"Indexation terminée : {len(chunks)} fragments (chunks) générés à partir de {len(documents)} page(s)/document(s).")
+                st.info("Prochaine étape : Mode Recherche Sémantique (Étape 3).")
         else:
             st.warning("Veuillez charger au moins un document avant d'indexer.")
             
     st.divider()
     
-    # 3. Toggle d'activation/désactivation du LLM
+    # Toggle d'activation/désactivation du LLM
     llm_enabled = st.toggle("Activer l'Assistant RAG (LLM)", value=False)
     
     if llm_enabled:
@@ -112,17 +109,17 @@ with st.sidebar:
     else:
         st.info("Mode : Recherche Sémantique Pure")
 
-# --- ZONE PRINCIPALE ---
-st.title("📚 Assistant RAG Local")
-st.markdown("Discutez avec vos documents (PDF, TXT, Markdown) en toute confidentialité.")
+# ZONE PRINCIPALE
+st.title("Assistant RAG Local ETU002744")
+st.markdown("Projet Mr Tsinjo : Introduction et Pratique de l'IA")
 
 # Affichage de l'historique conversationnel
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-        # Si la réponse contient des sources (Étape 4), on affiche l'expander dans l'historique
+        # Si la réponse contient des sources, on affiche l'expander dans l'historique
         if "sources" in message:
-            with st.expander("🔍 Voir les extraits ayant servi de contexte"):
+            with st.expander("Voir les extraits ayant servi de contexte"):
                 for i, src in enumerate(message["sources"]):
                     st.markdown(f"**Extrait {i+1} - Fichier : `{src['source']}`**\n> {src['content']}\n")
 
@@ -133,24 +130,24 @@ if prompt := st.chat_input("Posez une question sur vos documents..."):
     with st.chat_message("user"):
         st.markdown(prompt)
         
-    # Génération de la réponse de l'assistant
+    # Generation de la réponse de l'assistant
     with st.chat_message("assistant"):
         if st.session_state.vectorstore is None:
-            response = "⚠️ **Attention :** Veuillez d'abord charger et indexer des documents dans la barre latérale."
+            response = "Veuillez d'abord charger et indexer des documents dans la barre latérale."
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
         else:
             if llm_enabled:
-                # Étape 4 : Génération LLM (RAG Complet)
+                # Generation LLM (RAG Complet)
                 from langchain_core.prompts import PromptTemplate
                 from langchain_community.llms import Ollama
                 
-                # 1. Récupération des fragments pertinents
+                # Récupération des fragments pertinents
                 retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
                 relevant_docs = retriever.invoke(prompt)
                 context = "\n\n".join([doc.page_content for doc in relevant_docs])
                 
-                # 2. Ingénierie de Prompt
+                # Prompt pro max via chat :
                 template = """Tu es un assistant utile, précis et fiable. 
 Tu dois répondre à la question de l'utilisateur en te basant EXCLUSIVEMENT sur le contexte fourni ci-dessous. 
 Si le contexte ne contient pas la réponse ou ne permet pas de répondre, dis simplement "Je suis désolé, mais l'information ne se trouve pas dans les documents fournis." N'invente JAMAIS d'informations.
@@ -165,39 +162,38 @@ Réponse :"""
                 prompt_template = PromptTemplate(template=template, input_variables=["context", "question"])
                 final_prompt = prompt_template.format(context=context, question=prompt)
                 
-                # 3. Envoi au modèle local
-                # Note : par défaut on utilise 'mistral', assure-toi que 'ollama run mistral' tourne en arrière-plan.
+                # Envoi au modèle local
                 llm = Ollama(model="mistral")
                 
-                with st.spinner("🧠 Réflexion en cours par le modèle local..."):
+                with st.spinner("Réflexion en cours ..."):
                     llm_response = llm.invoke(final_prompt)
                     
                 st.markdown(llm_response)
                 
-                # 4. Transparence : Affichage visuel des extraits
+                # Transparence : Affichage visuel des extraits
                 sources_data = [{"source": d.metadata.get("source", "Inconnu"), "content": d.page_content} for d in relevant_docs]
                 
-                with st.expander("🔍 Voir les extraits ayant servi de contexte"):
+                with st.expander("Voir les extraits ayant servi de contexte"):
                     for i, src in enumerate(sources_data):
                         st.markdown(f"**Extrait {i+1} - Fichier : `{src['source']}`**\n> {src['content']}\n")
                         
-                # Sauvegarde dans l'historique (avec les sources pour que l'expander persiste)
+                # Sauvegarde dans l'historique
                 st.session_state.messages.append({
                     "role": "assistant", 
                     "content": llm_response,
                     "sources": sources_data
                 })
             else:
-                # Étape 3 : Recherche Sémantique Pure (sans LLM)
+                # Recherche Sémantique Pure (sans LLM)
                 retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
                 relevant_docs = retriever.invoke(prompt)
                 
-                response = f"🔍 **Résultats bruts de la recherche pour :** *{prompt}*\n\n"
+                response = f"Résultats bruts de la recherche pour : *{prompt}*\n\n"
                 for i, doc in enumerate(relevant_docs):
                     source_file = doc.metadata.get('source', 'Fichier inconnu')
                     chunk_content = doc.page_content
                     
-                    response += f"📄 **Extrait {i+1} - Fichier : `{source_file}`**\n> {chunk_content}\n\n---\n"
+                    response += f"**Extrait {i+1} - Fichier : `{source_file}`**\n> {chunk_content}\n\n---\n"
                 
                 st.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
