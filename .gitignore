@@ -1,0 +1,9 @@
+chroma_db/
+.qodo
+
+# les tests
+test_doc.txt
+test.md
+
+# le pdf
+pdf.pdf
